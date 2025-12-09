@@ -1,121 +1,127 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
-void main() {
-  runApp(const MyApp());
+// --- 1. EVENTS (The Actions) ---
+// The only thing we can do is "Toggle" the colors.
+abstract class ColorEvent {}
+
+class ToggleColorsEvent extends ColorEvent {}
+
+// --- 2. STATE (The Data) ---
+// We hold two colors.
+class ColorState {
+  final Color firstColor;
+  final Color secondColor;
+
+  ColorState({required this.firstColor, required this.secondColor});
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+// --- 3. BLOC (The Logic) ---
+class ColorBloc extends Bloc<ColorEvent, ColorState> {
+  // Initial state: Red and Blue
+  ColorBloc()
+    : super(ColorState(firstColor: Colors.red, secondColor: Colors.blue)) {
+    on<ToggleColorsEvent>((event, emit) {
+      // Logic: Swap the colors or change them
+      if (state.firstColor == Colors.red) {
+        emit(ColorState(firstColor: Colors.green, secondColor: Colors.orange));
+      } else {
+        emit(ColorState(firstColor: Colors.red, secondColor: Colors.blue));
+      }
     });
   }
+}
+
+// --- 4. THE UI ---
+void main() {
+  runApp(
+    MaterialApp(
+      home: BlocProvider(
+        create: (_) => ColorBloc(),
+        child: const TenBoxScreen(),
+      ),
+    ),
+  );
+}
+
+class TenBoxScreen extends StatelessWidget {
+  const TenBoxScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    print("SCAFFOLD REBUILT"); // Proof that the whole screen doesn't rebuild!
+
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
+      appBar: AppBar(title: const Text("BLoC Selective Rebuild")),
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            // We generate 10 widgets, but only wrap specific ones
+            for (int i = 0; i < 10; i++) ...[
+              // --- WIDGET #1: USES BLOC BUILDER ---
+              // Rebuilds whenever the state changes
+              if (i == 0)
+                BlocBuilder<ColorBloc, ColorState>(
+                  builder: (context, state) {
+                    print("Widget 1 Rebuilt");
+                    return BoxWidget(index: i, color: state.firstColor);
+                  },
+                )
+              // --- WIDGET #5: USES BLOC SELECTOR ---
+              // Only rebuilds if 'secondColor' specifically changes
+              else if (i == 4)
+                BlocSelector<ColorBloc, ColorState, Color>(
+                  selector: (state) => state.secondColor,
+                  builder: (context, color) {
+                    print("Widget 5 Rebuilt");
+                    return BoxWidget(index: i, color: color);
+                  },
+                )
+              // --- OTHER 8 WIDGETS: STATIC ---
+              // These have NO listeners. They never rebuild.
+              else
+                const BoxWidget(index: -1, color: Colors.grey),
+
+              const SizedBox(height: 5), // Spacing
+            ],
+
+            const SizedBox(height: 20),
+
+            // Button to trigger the change
+            ElevatedButton(
+              onPressed: () {
+                context.read<ColorBloc>().add(ToggleColorsEvent());
+              },
+              child: const Text("Change Colors"),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    );
+  }
+}
+
+// Just a simple box to display color
+class BoxWidget extends StatelessWidget {
+  final int index;
+  final Color color;
+
+  const BoxWidget({super.key, required this.index, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 200,
+      height: 30,
+      color: color,
+      alignment: Alignment.center,
+      child: Text(
+        index == -1 ? "Static Widget" : "Active Widget #${index + 1}",
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
